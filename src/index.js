@@ -757,8 +757,21 @@ async function createCommunityTemplate(interaction) {
 
 
 const WELCOME_CHANNEL_ID = '1563598730488320010';
+const AUTO_ROLE_ID = '1563598715577438219';
 
 client.on(Events.GuildMemberAdd, async member => {
+  // Asigna el rol automáticamente; si falla, continúa intentando enviar la bienvenida.
+  try {
+    const autoRole = await member.guild.roles.fetch(AUTO_ROLE_ID).catch(() => null);
+    if (!autoRole) {
+      console.error('No se encontró el rol automático ' + AUTO_ROLE_ID + ' en ' + member.guild.name);
+    } else {
+      await member.roles.add(autoRole, 'Rol automático al entrar al servidor');
+    }
+  } catch (roleError) {
+    console.error('No se pudo asignar el rol automático a ' + member.user.tag + ':', roleError);
+  }
+
   try {
     const channel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID).catch(() => null);
     if (!channel || !channel.isTextBased() || !channel.isSendable()) {
