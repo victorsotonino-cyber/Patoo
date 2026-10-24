@@ -400,6 +400,12 @@ async function createCommunityTemplate(interaction) {
   const publicVoice = [{ id: everyoneId, allow: [P.ViewChannel, P.Connect, P.Speak] }];
   addRoleOverwrite(publicVoice, roles, 'muted', [], [P.Connect, P.Speak]);
 
+  const staffVoice = [{ id: everyoneId, deny: [P.ViewChannel], allow: [] }];
+  for (const key of ['founder', 'admin', 'moderator', 'support']) {
+    addRoleOverwrite(staffVoice, roles, key, [P.ViewChannel, P.Connect, P.Speak], []);
+  }
+  staffVoice.push({ id: botMember.id, allow: [P.ViewChannel, P.Connect, P.Speak], deny: [] });
+
   const readOnly = [{
     id: everyoneId,
     allow: [P.ViewChannel, P.ReadMessageHistory],
@@ -525,7 +531,11 @@ async function createCommunityTemplate(interaction) {
         name: definition.name,
         type: definition.type,
         parent: parent.id,
-        permissionOverwrites: definition.overwrites || categoryDefinitions.find(c => c.key === definition.category).overwrites,
+        permissionOverwrites: definition.overwrites || (
+          definition.type === ChannelType.GuildVoice
+            ? (definition.category === 'staff' ? staffVoice : publicVoice)
+            : categoryDefinitions.find(c => c.key === definition.category).overwrites
+        ),
         reason: 'Plantilla de comunidad de Patoo'
       });
       channelsCreated++;
