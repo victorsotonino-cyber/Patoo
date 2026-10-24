@@ -14,6 +14,16 @@ Bot de moderación y configuración inicial de comunidades con comandos slash, c
 
 La plantilla crea roles como Fundador, Administrador, Moderador, Soporte, Eventos, Creador, Partner, Booster, VIP, Miembro, Nuevo, Silenciado y Bot. Los roles se crean vacíos de miembros: así no asigna privilegios automáticamente a nadie. El rol Administrador tiene permisos de gestión, pero no recibe el permiso global de Administrador.
 
+### Emojis personalizados de Emoji.gg
+
+- `/emojis-pack` — importa emojis personalizados de un pack público de Emoji.gg directamente al servidor.
+- Opción `pack`: acepta una URL como `https://emoji.gg/pack/822877-srp-store` o un slug. Si se deja vacío, usa el pack SrP Store.
+- Opción `cantidad`: permite importar entre 1 y 50 emojis por ejecución.
+- Descarga los archivos desde Emoji.gg y los sube como emojis personalizados de Discord; no usa emojis Unicode como sustituto.
+- Omite nombres que ya existan, respeta los espacios disponibles de emojis estáticos y animados, y muestra un resumen de añadidos, omitidos y fallidos.
+
+El bot necesita el permiso **Gestionar expresiones**. Discord impone límites de cantidad y tamaño de archivo, por lo que no todos los archivos de un pack necesariamente se podrán importar. Si quieres más, ejecuta el comando con otros packs públicos de [Emoji.gg](https://emoji.gg/packs).
+
 ### Moderación
 
 | Comando | Función |
