@@ -7,6 +7,7 @@ const {
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const AUTOMOD_FILE = path.join(DATA_DIR, 'automod.json');
+const WARNINGS_FILE = path.join(DATA_DIR, 'warnings.json');
 const PREFIX = 'P!';
 const TICKET_CATEGORY_ID = process.env.TICKET_CATEGORY_ID || '';
 const TICKET_STAFF_ROLE_ID = process.env.TICKET_STAFF_ROLE_ID || '';
@@ -38,6 +39,17 @@ function loadAutomod() {
 function saveAutomod(data) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(AUTOMOD_FILE, JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+function loadWarnings() {
+  try {
+    return fs.existsSync(WARNINGS_FILE) ? JSON.parse(fs.readFileSync(WARNINGS_FILE, 'utf8')) : {};
+  } catch { return {}; }
+}
+
+function saveWarnings(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(WARNINGS_FILE, JSON.stringify(data, null, 2) + '\n', 'utf8');
 }
 
 function ticketPanelPayload() {
@@ -124,10 +136,23 @@ async function prefixCommand(message, P) {
     return message.channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => null);
   }
 
-  const modCommands = ['ban', 'kick', 'timeout', 'warn', 'clear', 'lock', 'unlock', 'slowmode'];
+  const modCommands = ['ban', 'kick', 'timeout', 'untimeout', 'unban', 'warn', 'warnings', 'clear', 'lock', 'unlock', 'slowmode'];
   if (modCommands.includes(command) && !isMod) return reply('⛔ Necesitas permisos de moderación para usar ese comando.');
-  if (['ban', 'kick', 'timeout', 'warn'].includes(command)) {
+  if (command === 'unban') {
+    const id = args[0];
+    if (!/^\\d{17,20}$/.test(id || '')) return reply('Uso: P!unban ID_DE_DISCORD');
+    return message.guild.bans.remove(id, 'Desbloqueo por ' + message.author.tag)
+      .then(() => reply('✅ Se retiró el bloqueo del usuario ' + id + '.'))
+      .catch(() => reply('No pude retirar el bloqueo; verifica el ID y los permisos.'));
+  }
+  if (['ban', 'kick', 'timeout', 'untimeout', 'warn', 'warnings'].includes(command)) {
     const target = message.mentions.members.first();
+    if (command === 'warnings') {
+      if (!target) return reply('Uso: P!warnings @usuario');
+      const data = loadWarnings();
+      const entries = ((data[message.guild.id] || {})[target.id] || []);
+      return reply(entries.length ? '⚠️ Advertencias de ' + target.user.tag + ': ' + entries.length + '\\n' + entries.slice(-5).map((item, i) => (i + 1) + '. ' + String(item.reason || 'Sin motivo')).join('\\n').slice(0, 1200) : '✅ Ese usuario no tiene advertencias registradas.');
+    }
     if (!target) return reply('Menciona al miembro. Ejemplo: P!' + command + ' @usuario motivo');
     const botMember = message.guild.members.me;
     if (target.id === message.author.id || target.id === message.client.user.id || target.id === message.guild.ownerId ||
@@ -135,6 +160,9 @@ async function prefixCommand(message, P) {
       (botMember && target.roles.highest.position >= botMember.roles.highest.position)) return reply('⛔ No puedes moderar a ese usuario por la jerarquía de roles.');
     const mentionIndex = args.findIndex(arg => arg.includes(target.id));
     const afterTarget = mentionIndex >= 0 ? args.slice(mentionIndex + 1) : args.slice(1);
+    if (command === 'untimeout') {
+      return target.timeout(null, 'Timeout retirado por ' + message.author.tag).then(() => reply('✅ Se retiró el timeout de ' + target.user.tag + '.')).catch(() => reply('No pude retirar el timeout.'));
+    }
     let reason = afterTarget.join(' ') || 'Sin motivo especificado';
     if (command === 'timeout') {
       const minutes = Number(afterTarget[0]);
@@ -145,7 +173,13 @@ async function prefixCommand(message, P) {
     if (command === 'ban') return target.ban({ reason }).then(() => reply('🔨 Usuario bloqueado: ' + target.user.tag)).catch(() => reply('No pude bloquear al usuario; revisa permisos.'));
     if (command === 'kick') return target.kick(reason).then(() => reply('👢 Usuario expulsado: ' + target.user.tag)).catch(() => reply('No pude expulsar al usuario; revisa permisos.'));
     if (!afterTarget.length) return reply('Uso: P!warn @usuario motivo');
-    return reply('⚠️ Advertencia para ' + target.user.tag + ': ' + reason);
+    const warnings = loadWarnings();
+    if (!warnings[message.guild.id]) warnings[message.guild.id] = {};
+    if (!warnings[message.guild.id][target.id]) warnings[message.guild.id][target.id] = [];
+    warnings[message.guild.id][target.id].push({ reason, date: new Date().toISOString(), moderatorId: message.author.id, moderatorTag: message.author.tag });
+    saveWarnings(warnings);
+    await target.send('⚠️ Recibiste una advertencia en **' + message.guild.name + '**. Motivo: ' + reason).catch(() => null);
+    return reply('⚠️ Advertencia registrada para ' + target.user.tag + '. Total: ' + warnings[message.guild.id][target.id].length + '.');
   }
   if (command === 'clear') {
     const amount = Number(args[0]);
