@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const fs = require('node:fs');
 const path = require('node:path');
+const community = require('./community');
+
 const {
   Client,
   GatewayIntentBits,
@@ -23,7 +25,7 @@ if (!TOKEN) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 const P = PermissionFlagsBits;
@@ -93,6 +95,7 @@ const commands = [
     .setDefaultMemberPermissions(P.BanMembers)
     .addStringOption(o => o.setName('id').setDescription('ID numérico del usuario').setRequired(true))
     .addStringOption(o => o.setName('razon').setDescription('Motivo del desbloqueo').setMaxLength(300)),
+  ...community.commands(P),
   new SlashCommandBuilder()
     .setName('emojis-pack')
     .setDescription('Importa muchos emojis de un pack de Emoji.gg al servidor.')
@@ -854,5 +857,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 });
+
+community.attach(client, P);
 
 client.login(TOKEN);
