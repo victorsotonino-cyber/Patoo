@@ -94,6 +94,12 @@ const commands = [
     .addStringOption(o => o.setName('id').setDescription('ID numérico del usuario').setRequired(true))
     .addStringOption(o => o.setName('razon').setDescription('Motivo del desbloqueo').setMaxLength(300)),
   new SlashCommandBuilder()
+    .setName('emojis-pack')
+    .setDescription('Importa muchos emojis de un pack de Emoji.gg al servidor.')
+    .setDefaultMemberPermissions(P.ManageGuildExpressions)
+    .addStringOption(o => o.setName('pack').setDescription('URL o slug de Emoji.gg; por defecto usa SrP Store').setMaxLength(200))
+    .addIntegerOption(o => o.setName('cantidad').setDescription('Máximo de emojis a importar (1 a 50)').setMinValue(1).setMaxValue(50)),
+  new SlashCommandBuilder()
     .setName('templanes')
     .setDescription('Crea la estructura de una comunidad: roles, categorías y canales.')
     .setDefaultMemberPermissions(P.ManageGuild),
@@ -325,6 +331,178 @@ async function handleModeration(interaction) {
 function addRoleOverwrite(list, roles, key, allow, deny) {
   if (!roles[key]) return;
   list.push({ id: roles[key].id, allow: allow || [], deny: deny || [] });
+}
+
+function sanitizeEmojiName(filename) {
+  const base = path.basename(filename).replace(/\.(png|gif|webp|jpg|jpeg)$/i, '');
+  let name = base
+    .replace(/^\d+[-_]?/, '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  if (name.length < 2) name = 'emoji_' + name;
+  if (!/^[a-zA-Z0-9_]{2,32}$/.test(name)) name = ('emoji_' + name).slice(0, 32);
+  return name.slice(0, 32);
+}
+
+function getPackSlug(input) {
+  const value = String(input || '822877-srp-store').trim();
+  const match = value.match(/emoji\.gg\/pack\/([a-zA-Z0-9-]+)/i);
+  return (match ? match[1] : value.replace(/^\/+|\/+$/g, '').replace(/^pack\//i, '')).toLowerCase();
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'PatooDiscordBot/1.0 (emoji.gg pack importer)' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error('Emoji.gg respondió con HTTP ' + response.status);
+  return response.json();
+}
+
+async function importEmojiPack(interaction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    await interaction.reply({ content: 'Este comando solo se puede usar dentro de un servidor.', ephemeral: true });
+    return;
+  }
+
+  const packInput = interaction.options.getString('pack') || '822877-srp-store';
+  const requestedLimit = interaction.options.getInteger('cantidad') || 50;
+  const slug = getPackSlug(packInput);
+  if (!/^[a-z0-9-]{2,100}$/.test(slug)) {
+    await interaction.reply({ content: 'Introduce una URL válida de Emoji.gg o el identificador del pack.', ephemeral: true });
+    return;
+  }
+
+  const botMember = await guild.members.fetchMe().catch(() => null);
+  if (!botMember || !botMember.permissions.has(P.ManageGuildExpressions)) {
+    await interaction.reply({
+      content: 'El bot necesita el permiso **Gestionar expresiones** para añadir emojis personalizados.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const packs = await fetchJson('https://emoji.gg/api/packs');
+    const pack = Array.isArray(packs)
+      ? packs.find(item => String(item.slug || '').toLowerCase() === slug ||
+          String(item.id) === slug ||
+          String(item.name || '').toLowerCase() === slug)
+      : null;
+
+    let filenames = [];
+    let packName = slug;
+
+    if (pack && typeof pack.emojis === 'string') {
+      filenames = pack.emojis.split(',').map(item => item.trim()).filter(Boolean);
+      packName = String(pack.name || slug);
+    }
+
+    // Older packs may not be present in the API's current listing. Fall back to the pack page.
+    if (!filenames.length) {
+      const pageResponse = await fetch('https://emoji.gg/pack/' + encodeURIComponent(slug), {
+        headers: { 'User-Agent': 'Mozilla/5.0 PatooDiscordBot/1.0' },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!pageResponse.ok) throw new Error('No se encontró el pack. Revisa la URL de Emoji.gg.');
+      const html = await pageResponse.text();
+      const title = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+      if (title) packName = title[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim();
+      const imageMatches = [...html.matchAll(/https?:\/\/cdn\d*\.emoji\.gg\/emojis\/([^"'?#\s<>]+)/gi)];
+      filenames = [...new Set(imageMatches.map(match => decodeURIComponent(match[1])))];
+    }
+
+    if (!filenames.length) {
+      await interaction.editReply('No pude encontrar archivos de emoji en ese pack. Comprueba que el pack de Emoji.gg sea público.');
+      return;
+    }
+
+    const currentEmojis = await guild.emojis.fetch();
+    const staticUsed = currentEmojis.filter(emoji => !emoji.animated).size;
+    const animatedUsed = currentEmojis.filter(emoji => emoji.animated).size;
+    const staticLimit = guild.maximumEmojis ?? 50;
+    const animatedLimit = guild.maximumAnimatedEmojis ?? 50;
+    let staticAvailable = Math.max(0, staticLimit - staticUsed);
+    let animatedAvailable = Math.max(0, animatedLimit - animatedUsed);
+
+    const candidates = filenames.slice(0, requestedLimit);
+    let added = 0;
+    let skipped = 0;
+    let failed = 0;
+    const failures = [];
+    const usedNames = new Set(currentEmojis.map(emoji => emoji.name.toLowerCase()));
+
+    for (const filename of candidates) {
+      const name = sanitizeEmojiName(filename);
+      if (usedNames.has(name.toLowerCase())) {
+        skipped++;
+        continue;
+      }
+
+      const extension = path.extname(filename).toLowerCase();
+      const isAnimated = extension === '.gif';
+      if (isAnimated && animatedAvailable <= 0) {
+        skipped++;
+        continue;
+      }
+      if (!isAnimated && staticAvailable <= 0) {
+        skipped++;
+        continue;
+      }
+
+      const imageUrl = 'https://cdn3.emoji.gg/emojis/' + encodeURIComponent(filename);
+      try {
+        const response = await fetch(imageUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 PatooDiscordBot/1.0' },
+          signal: AbortSignal.timeout(12000)
+        });
+        if (!response.ok) throw new Error('descarga HTTP ' + response.status);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (!buffer.length || buffer.length > 256 * 1024) throw new Error('archivo vacío o supera 256 KB');
+
+        await guild.emojis.create({
+          attachment: buffer,
+          name,
+          reason: 'Importado desde Emoji.gg: ' + packName
+        });
+        usedNames.add(name.toLowerCase());
+        if (isAnimated) animatedAvailable--;
+        else staticAvailable--;
+        added++;
+      } catch (error) {
+        failed++;
+        if (failures.length < 3) failures.push(name + ': ' + String(error.message || error).slice(0, 100));
+      }
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(failed ? 0xF1C40F : 0x2ECC71)
+      .setTitle('Importación de Emoji.gg finalizada')
+      .setDescription('Pack: **' + packName.slice(0, 200) + '**\nFuente: https://emoji.gg/pack/' + slug)
+      .addFields(
+        { name: 'Añadidos', value: String(added), inline: true },
+        { name: 'Omitidos', value: String(skipped), inline: true },
+        { name: 'Fallidos', value: String(failed), inline: true }
+      )
+      .setFooter({ text: 'Se respetan los límites de emojis del servidor. Máximo por ejecución: 50.' })
+      .setTimestamp();
+
+    if (failures.length) embed.addFields({ name: 'Detalles de errores', value: failures.join('\n').slice(0, 1000) });
+    if (candidates.length < filenames.length) {
+      embed.addFields({ name: 'Nota', value: 'El pack contiene más archivos; vuelve a ejecutar el comando con otra selección o un pack diferente para añadir más.' });
+    }
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error en /emojis-pack:', error);
+    await interaction.editReply('No se pudo importar el pack: ' + String(error.message || error).slice(0, 500));
+  }
 }
 
 async function createCommunityTemplate(interaction) {
@@ -601,6 +779,10 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
+    if (interaction.commandName === 'emojis-pack') {
+      await importEmojiPack(interaction);
+      return;
+    }
     if (interaction.commandName === 'templanes' || interaction.commandName === 'templates') {
       await createCommunityTemplate(interaction);
       return;
