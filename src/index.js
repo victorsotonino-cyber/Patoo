@@ -23,7 +23,7 @@ if (!TOKEN) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
 const P = PermissionFlagsBits;
@@ -754,6 +754,49 @@ async function createCommunityTemplate(interaction) {
   }
   await interaction.editReply({ embeds: [summary] });
 }
+
+
+const WELCOME_CHANNEL_ID = '1563598730488320010';
+
+client.on(Events.GuildMemberAdd, async member => {
+  try {
+    const channel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID).catch(() => null);
+    if (!channel || !channel.isTextBased() || !channel.isSendable()) {
+      console.error('No se pudo enviar bienvenida: revisa el canal ' + WELCOME_CHANNEL_ID);
+      return;
+    }
+
+    const memberNumber = member.guild.memberCount.toLocaleString('es-ES');
+    const embed = new EmbedBuilder()
+      .setColor(0x7C5CFC)
+      .setAuthor({
+        name: 'PATOO  •  NUEVO MIEMBRO',
+        iconURL: member.guild.iconURL({ size: 128 }) || member.client.user.displayAvatarURL({ size: 128 })
+      })
+      .setTitle('✦ ¡Te damos la bienvenida!')
+      .setDescription(
+        '¡Hola, ' + member.toString() + '! Nos alegra tenerte aquí.\n' +
+        'Ya formas parte de **' + member.guild.name.replace(/[*_~`|>]/g, '').slice(0, 100) + '**.\n\n' +
+        'Explora la comunidad, conoce a sus miembros y disfruta tu estancia.'
+      )
+      .setThumbnail(member.user.displayAvatarURL({ size: 256, extension: 'png' }))
+      .addFields(
+        { name: '✧ MIEMBRO', value: member.user.tag.slice(0, 100), inline: true },
+        { name: '✧ NÚMERO', value: '#' + memberNumber, inline: true },
+        { name: '✧ EMPEZAR', value: 'Lee las reglas y preséntate para conocer a la comunidad.', inline: false }
+      )
+      .setFooter({ text: 'Gracias por unirte • ' + member.guild.name.slice(0, 150) })
+      .setTimestamp();
+
+    await channel.send({
+      content: '╭・Bienvenido/a ' + member.toString() + '・╮',
+      embeds: [embed],
+      allowedMentions: { users: [member.id] }
+    });
+  } catch (error) {
+    console.error('Error al enviar bienvenida para ' + member.user.tag + ':', error);
+  }
+});
 
 client.once(Events.ClientReady, async readyClient => {
   console.log('Conectado como ' + readyClient.user.tag);
