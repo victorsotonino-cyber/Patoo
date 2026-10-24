@@ -127,7 +127,7 @@ async function prefixCommand(message, P) {
       .setDescription('Comunidad: P!ticket, P!say, P!help\nModeración: P!ban @usuario motivo, P!kick @usuario motivo, P!timeout @usuario minutos motivo, P!warn @usuario motivo, P!clear cantidad, P!lock, P!unlock, P!slowmode segundos.\nSlash: /ticket-panel, /ticket-close, /say, /automod y los comandos de moderación.')] }).catch(() => null);
   }
   if (command === 'ticket') return message.channel.send(ticketPanelPayload()).catch(() => null);
-  if (command === 'ticketclose' || command === 'close') return closeTicket(message.channel, message.author, { reply: payload => message.reply(payload) }, member);
+  if (command === 'ticketclose' || command === 'close') return closeTicket(message.channel, message.author, { reply: payload => message.reply(typeof payload === 'string' ? payload : { content: payload.content }) }, member);
   if (command === 'say') {
     if (!has(P.ManageMessages)) return reply('⛔ Necesitas Gestionar mensajes para usar este comando.');
     const text = args.join(' ').slice(0, 1900);
@@ -136,8 +136,14 @@ async function prefixCommand(message, P) {
     return message.channel.send({ content: text, allowedMentions: { parse: [] } }).catch(() => null);
   }
 
-  const modCommands = ['ban', 'kick', 'timeout', 'untimeout', 'unban', 'warn', 'warnings', 'clear', 'lock', 'unlock', 'slowmode'];
-  if (modCommands.includes(command) && !isMod) return reply('⛔ Necesitas permisos de moderación para usar ese comando.');
+  const requiredPermission = {
+    ban: P.BanMembers, unban: P.BanMembers, kick: P.KickMembers,
+    timeout: P.ModerateMembers, untimeout: P.ModerateMembers, warn: P.ModerateMembers, warnings: P.ModerateMembers,
+    clear: P.ManageMessages, lock: P.ManageChannels, unlock: P.ManageChannels, slowmode: P.ManageChannels
+  }[command];
+  if (requiredPermission && !has(requiredPermission) && !has(P.Administrator)) {
+    return reply('⛔ No tienes el permiso necesario para usar ese comando.');
+  }
   if (command === 'unban') {
     const id = args[0];
     if (!/^\\d{17,20}$/.test(id || '')) return reply('Uso: P!unban ID_DE_DISCORD');
