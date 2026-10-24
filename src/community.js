@@ -146,7 +146,7 @@ async function prefixCommand(message, P) {
   }
   if (command === 'unban') {
     const id = args[0];
-    if (!/^\\d{17,20}$/.test(id || '')) return reply('Uso: P!unban ID_DE_DISCORD');
+    if (!/^\d{17,20}$/.test(id || '')) return reply('Uso: P!unban ID_DE_DISCORD');
     return message.guild.bans.remove(id, 'Desbloqueo por ' + message.author.tag)
       .then(() => reply('✅ Se retiró el bloqueo del usuario ' + id + '.'))
       .catch(() => reply('No pude retirar el bloqueo; verifica el ID y los permisos.'));
@@ -157,7 +157,7 @@ async function prefixCommand(message, P) {
       if (!target) return reply('Uso: P!warnings @usuario');
       const data = loadWarnings();
       const entries = ((data[message.guild.id] || {})[target.id] || []);
-      return reply(entries.length ? '⚠️ Advertencias de ' + target.user.tag + ': ' + entries.length + '\\n' + entries.slice(-5).map((item, i) => (i + 1) + '. ' + String(item.reason || 'Sin motivo')).join('\\n').slice(0, 1200) : '✅ Ese usuario no tiene advertencias registradas.');
+      return reply(entries.length ? '⚠️ Advertencias de ' + target.user.tag + ': ' + entries.length + '\n' + entries.slice(-5).map((item, i) => (i + 1) + '. ' + String(item.reason || 'Sin motivo')).join('\n').slice(0, 1200) : '✅ Ese usuario no tiene advertencias registradas.');
     }
     if (!target) return reply('Menciona al miembro. Ejemplo: P!' + command + ' @usuario motivo');
     const botMember = message.guild.members.me;
