@@ -70,3 +70,17 @@ El rol del bot debe estar por encima de los roles de los miembros a los que mode
 ## Despliegue en un hosting
 
 Configura \`DISCORD_TOKEN\`, \`CLIENT_ID\` y \`GUILD_ID\` como variables de entorno del servicio, y usa \`npm start\` como comando de inicio. No pegues el token en el código ni en mensajes públicos.
+
+### Tickets, comandos con prefijo y automod
+
+- `/ticket-panel` publica el panel de soporte con botón para abrir un canal privado.
+- `/ticket-close` cierra un ticket desde su canal; el dueño del ticket o el staff con **Gestionar canales** puede cerrarlo.
+- `P!ticket` publica el panel; `P!ticketclose` cierra el ticket actual.
+- `/say mensaje` y `P!say mensaje` publican texto como el bot. Requieren **Gestionar mensajes**.
+- Prefijo `P!`: `help`, `ticket`, `say`, `ban`, `kick`, `timeout`, `warn`, `clear`, `lock`, `unlock` y `slowmode`.
+- `/automod estado:on|off` activa o desactiva la protección automática contra invitaciones de Discord, mensajes repetidos, spam rápido y exceso de menciones. El estado se guarda en `data/automod.json`.
+- Opcionales para configurar tickets: `TICKET_CATEGORY_ID` (ID de la categoría donde se crearán) y `TICKET_STAFF_ROLE_ID` (rol que puede ver y atender tickets).
+
+**Importante para comandos P!:** en Discord Developer Portal → Bot, activa **Message Content Intent** (y conserva Server Members Intent). El bot también necesita permisos para ver/enviar mensajes, gestionar canales, gestionar mensajes, expulsar/bloquear miembros y moderar miembros según los comandos que uses. No concedas permisos que no necesite.
+
+El automod está activado por defecto. Ajusta su estado con `/automod`. Revisa los permisos y la jerarquía de roles del bot antes de probar acciones de moderación.
